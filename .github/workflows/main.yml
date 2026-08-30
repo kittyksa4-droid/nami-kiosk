@@ -16,6 +16,7 @@ jobs:
 
       - name: Unzip project
         run: |
+          rm -rf app
           mkdir app
           unzip -o nami_kiosk_ready.zip -d app
 
@@ -24,13 +25,39 @@ jobs:
         with:
           channel: stable
 
-      - name: Create Android files
+      - name: Create Android project
         working-directory: app
         run: flutter create --platforms=android .
+
+      - name: Restore Nami Android integration
+        working-directory: app
+        run: |
+          mkdir -p android/app/libs
+          mkdir -p android/app/src/main/kotlin/com/example/kitty_here_pos
+          cp native_overlay/libs/SkyBandSDK-release.aar android/app/libs/SkyBandSDK-release.aar
+          cp native_overlay/MainActivity.kt android/app/src/main/kotlin/com/example/kitty_here_pos/MainActivity.kt
+          cp native_overlay/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/build.gradle.kts')
+          s=p.read_text()
+          marker='dependencies {'
+          dep='    implementation(files("libs/SkyBandSDK-release.aar"))\n'
+          if dep.strip() not in s:
+              if marker in s:
+                  s=s.replace(marker, marker+'\n'+dep, 1)
+              else:
+                  s += '\n\ndependencies {\n'+dep+'}\n'
+          p.write_text(s)
+          PY
 
       - name: Get packages
         working-directory: app
         run: flutter pub get
+
+      - name: Analyze Dart
+        working-directory: app
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build APK
         working-directory: app
@@ -39,5 +66,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: nami-kiosk-apk
+          name: nami-kiosk-apk-v21
           path: app/build/app/outputs/flutter-apk/app-release.apk
